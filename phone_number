@@ -1,0 +1,160 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import pandas as pd
+
+# Setup WebDriver
+options = Options()
+options.add_experimental_option("excludeSwitches", ["enable-logging"])
+driver = webdriver.Chrome(options=options)
+
+# Step 1: Go to main URL
+url = "https://www.manutouch.com.hk/"
+driver.get(url)
+WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='繼續登入']"))).click()
+
+# Step 2: Login credentials
+time.sleep(8)
+driver.get("https://api.emmprd.asia.manulife.com/ext/nest-connect-gatewayd/interaction/p7A9rArksMogGXpNoCAwp&lang=zh-hant")
+
+WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "user"))).send_keys("") # enter username
+driver.find_element(By.ID, "password").send_keys("") #enter password
+driver.find_element(By.XPATH, "//button[@type='submit']").click()
+
+# Step 3: Second login
+WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "radio1"))).click()
+driver.find_element(By.XPATH, "//button[text()='發送']").click()
+time.sleep(35)
+
+# Step 4: Navigate to customer search page
+driver.get(url + "home/customer/customer-search?from=root")
+WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CLASS_NAME, 'table-row-rwnZRQ')))
+
+# Step 5: Data collection
+data = []
+# name_list = [". SUTILAH","AGRAWAL SHIVAM","CHAN CHUI SHAN","CHAN CHUN WAI"] #for testing only 
+name_list= []
+
+
+def skip():
+#  Loop through pages using your XPath
+    page_count = 0
+    for i in range(2, 29): # skip 28 pages
+        try:
+            xpath = f"//li[contains(@class, 'mdr-pagination-item') and text()={i}]"
+            
+            # Wait until the pagination button is clickable
+            next_button = WebDriverWait(driver, 15).until(
+                EC.element_to_be_clickable((By.XPATH, xpath))
+            )
+            
+            # Scroll into view and click
+            driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
+            next_button.click()
+            
+            page_count += 1
+            time.sleep(5)  # Allow page to load fully
+
+        except Exception as e:
+            print(f"Failed to click li[{i}]: {e}")
+            break
+
+
+
+# Loop through the list of names
+def search_customer():
+    global data, name_list
+    xpath_template = "//span[contains(@class, 'owner-POo99b') and text()= '{}']"
+
+    for name in name_list[:20]:  # Continue until the list is empty
+        try:
+            xpath = xpath_template.format(name)
+            pages = driver.find_elements(By.XPATH, xpath)
+
+            for p in pages:
+                p.click()
+                time.sleep(1)
+
+                profile_xpath = "//div[contains(@class, 'profile-tab-item') and contains(text(), '客戶檔案')]"
+                WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, profile_xpath))
+                ).click()
+
+                client = driver.find_element(By.XPATH, "/html/body/capacitor-root/ion-router-outlet/ado-layout-container/ion-app/div/div[2]/ion-router-outlet/sub-app-header-menu-layout-container/ion-app/ion-content/div/app-spa-host/hkap-root/ado-profile/ado-layout/ado-content/div/div/div[1]/p")
+                data.append(client.text.strip())  # Append client name/info
+
+                try:
+                    # XPath for the phone number element
+                    phone_number_xpath = "/html/body/capacitor-root/ion-router-outlet/ado-layout-container/ion-app/div/div[2]/ion-router-outlet/sub-app-header-menu-layout-container/ion-app/ion-content/div/app-spa-host/hkap-root/ado-profile/ado-layout/ado-content/div/hkap-profile-info/div/hkap-contact-info/div/hkap-contact-info-card/div[1]/div[2]/div[1]"
+                    
+                    # Wait for the element to be present
+                    phone_number_element = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, phone_number_xpath))
+                    )
+
+                    
+                    # Extract and append the phone number text if found
+                    phone_number_text = phone_number_element.text.strip()  # Stripping whitespace for cleaner data
+                    data.append(phone_number_text if phone_number_text else "No phone number found")
+
+                except Exception as e:
+                    # Handle cases where the phone number is not found or another error occurs
+                    data.append("No phone number found")
+                    print(f"An error occurred: {e}")
+                    
+                print(f'processed:{client.text.strip()} + {phone_number_text if phone_number_text else "No phone number found"}')
+                # go back 
+                b_button = driver.find_element(By.XPATH, "//div[@slot='back-title' and text()=' 客戶搜尋 ']").click()
+                time.sleep(1)  # Short pause to ensure the page has loaded
+
+                
+
+            # Remove the processed name only after successful processing
+            name_list.remove(name)
+
+            time.sleep(5)
+        except Exception as e:
+            print(f"Error processing name '{name}': {e}")
+            # Optionally log or skip the name, or move to the next one anyway
+            name_list.pop(0)
+            continue
+
+
+def nex_page():
+#  Loop through pages using your XPath
+    page_count = 0
+    for i in range(30, 46):
+        try:
+            xpath = f"//li[contains(@class, 'mdr-pagination-item') and text()={i}]"
+            
+            # Wait until the pagination button is clickable
+            next_button = WebDriverWait(driver, 15).until(
+                EC.element_to_be_clickable((By.XPATH, xpath))
+            )
+            
+            # Scroll into view and click
+            driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
+            next_button.click()
+            
+            page_count += 1
+            time.sleep(5)  # Allow page to load fully
+            search_customer()
+
+        except Exception as e:
+            print(f"Failed to click li[{i}]: {e}")
+            break
+
+# start program
+skip()
+search_customer()
+nex_page()
+# Save results to CSV
+df = pd.DataFrame(data, columns=["customer_info"])
+df.to_csv("manulife_profile_info.csv", index=False, encoding="utf-8-sig")
+print("Data saved to manulife_profile_info.csv")
+
+driver.quit()
+
